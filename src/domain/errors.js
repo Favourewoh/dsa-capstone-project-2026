@@ -3,6 +3,7 @@ export const ErrorCodes = Object.freeze({
   NOT_FOUND: "NOT_FOUND",
   SOLD_OUT: "SOLD_OUT",
   CONFLICT: "CONFLICT",
+  INVALID_STATE: "INVALID_STATE",
 });
 
 export class DomainError extends Error {
