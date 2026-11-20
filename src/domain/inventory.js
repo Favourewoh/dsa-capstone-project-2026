@@ -16,7 +16,12 @@ function assertNonEmptyString(value, fieldName) {
 }
 
 function assertPositiveSafeInteger(value, fieldName) {
-  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0 || !Number.isSafeInteger(value)) {
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value <= 0 ||
+    !Number.isSafeInteger(value)
+  ) {
     throw new DomainError(
       ErrorCodes.VALIDATION,
       `${fieldName} must be a positive safe integer.`
@@ -26,13 +31,75 @@ function assertPositiveSafeInteger(value, fieldName) {
 }
 
 function assertNonNegativeSafeInteger(value, fieldName) {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || !Number.isSafeInteger(value)) {
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < 0 ||
+    !Number.isSafeInteger(value)
+  ) {
     throw new DomainError(
       ErrorCodes.VALIDATION,
       `${fieldName} must be a non-negative safe integer.`
     );
   }
   return value;
+}
+
+function assertValidIsoDate(value, fieldName) {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new DomainError(
+      ErrorCodes.VALIDATION,
+      `${fieldName} must be a valid ISO date string.`
+    );
+  }
+  const trimmed = value.trim();
+  const parsedMs = Date.parse(trimmed);
+  if (Number.isNaN(parsedMs)) {
+    throw new DomainError(
+      ErrorCodes.VALIDATION,
+      `${fieldName} is not a valid date: ${value}`
+    );
+  }
+  return new Date(parsedMs).toISOString();
+}
+
+function buildEventSummary(event, waitlistsByTierId) {
+  const tiers = Array.from(event.tiers.values());
+  let cheapestPriceCents = null;
+  let totalSeatsLeft = 0;
+
+  for (const tier of tiers) {
+    totalSeatsLeft += tier.seatsLeft;
+    if (cheapestPriceCents === null || tier.priceCents < cheapestPriceCents) {
+      cheapestPriceCents = tier.priceCents;
+    }
+  }
+
+  const waitlistCount = tiers.reduce((sum, tier) => {
+    const queue = waitlistsByTierId.get(tier.id);
+    return sum + (queue ? queue.size : 0);
+  }, 0);
+
+  return {
+    id: event.id,
+    title: event.title,
+    city: event.city,
+    venue: event.venue,
+    startsAt: event.startsAt,
+    published: event.published,
+    status: event.status,
+    tierCount: tiers.length,
+    cheapestPriceCents,
+    seatsLeft: totalSeatsLeft,
+    waitlistCount,
+    tiers: tiers.map((t) => ({
+      id: t.id,
+      name: t.name,
+      priceCents: t.priceCents,
+      capacity: t.capacity,
+      seatsLeft: t.seatsLeft,
+    })),
+  };
 }
 
 export function createStore() {
@@ -63,18 +130,23 @@ export function createStore() {
     );
   }
 
-  function createEvent({ title, venue = "", startsAt = null } = {}) {
+  function createEvent({ title, city = "", venue = "", startsAt = null } = {}) {
     const cleanTitle = assertNonEmptyString(title, "title");
-    const cleanVenue = typeof venue === "string" ? venue.trim() : "";
-    if (cleanVenue === "" && venue !== "" && venue !== undefined && venue !== null) {
+    const cleanCity = assertNonEmptyString(city, "city");
+    if (venue !== undefined && venue !== null && typeof venue !== "string") {
       throw new DomainError(ErrorCodes.VALIDATION, "venue must be a string.");
     }
+    const cleanVenue = typeof venue === "string" ? venue.trim() : "";
+    const validStartsAt = assertValidIsoDate(startsAt, "startsAt");
 
     const event = {
       id: newId(),
       title: cleanTitle,
+      city: cleanCity,
       venue: cleanVenue,
-      startsAt,
+      startsAt: validStartsAt,
+      published: false,
+      status: "DRAFT",
       tiers: new Map(),
     };
 
@@ -82,8 +154,11 @@ export function createStore() {
     return {
       id: event.id,
       title: event.title,
+      city: event.city,
       venue: event.venue,
       startsAt: event.startsAt,
+      published: event.published,
+      status: event.status,
       tiers: [],
     };
   }
@@ -109,27 +184,68 @@ export function createStore() {
     return { ...tier };
   }
 
+  function publishEventInternal(eventId) {
+    const event = getEventOrThrow(eventId);
+    if (event.tiers.size === 0) {
+      throw new DomainError(
+        ErrorCodes.INVALID_STATE,
+        `Cannot publish event "${event.title}" because it has no ticket tiers.`
+      );
+    }
+    event.published = true;
+    event.status = "PUBLISHED";
+    return buildEventSummary(event, waitlistsByTierId);
+  }
+
+  function unpublishEventInternal(eventId) {
+    const event = getEventOrThrow(eventId);
+    event.published = false;
+    event.status = "DRAFT";
+    return buildEventSummary(event, waitlistsByTierId);
+  }
+
+  function listEventSummariesInternal({ publishedOnly = true } = {}) {
+    if (typeof publishedOnly !== "boolean") {
+      throw new DomainError(
+        ErrorCodes.VALIDATION,
+        "publishedOnly must be a boolean."
+      );
+    }
+    const results = [];
+    for (const event of events.values()) {
+      if (publishedOnly && !event.published) {
+        continue;
+      }
+      results.push(buildEventSummary(event, waitlistsByTierId));
+    }
+    return results;
+  }
+
   function bookTickets({ tierId, attendeeName, quantity } = {}) {
     const { event, tier } = findTierLocation(tierId);
     const cleanAttendeeName = assertNonEmptyString(attendeeName, "attendeeName");
-    const qty = assertPositiveSafeInteger(quantity, "quantity");
 
-    if (qty < MIN_TICKETS_PER_BOOKING || qty > MAX_TICKETS_PER_BOOKING) {
+    if (
+      typeof quantity !== "number" ||
+      !Number.isInteger(quantity) ||
+      !Number.isSafeInteger(quantity) ||
+      quantity < MIN_TICKETS_PER_BOOKING ||
+      quantity > MAX_TICKETS_PER_BOOKING
+    ) {
       throw new DomainError(
         ErrorCodes.VALIDATION,
-        `Booking quantity must be between ${MIN_TICKETS_PER_BOOKING} and ${MAX_TICKETS_PER_BOOKING} tickets.`
+        `Booking quantity must be an integer between ${MIN_TICKETS_PER_BOOKING} and ${MAX_TICKETS_PER_BOOKING} tickets.`
       );
     }
 
-    // Check capacity before mutating any state so a failed booking changes nothing.
-    if (tier.seatsLeft < qty) {
+    if (tier.seatsLeft < quantity) {
       throw new DomainError(
         ErrorCodes.SOLD_OUT,
-        `Not enough seats left on tier "${tier.name}". Requested ${qty}, available ${tier.seatsLeft}.`,
+        `Not enough seats left on tier "${tier.name}". Requested ${quantity}, available ${tier.seatsLeft}.`,
         {
           eventId: event.id,
           tierId: tier.id,
-          requested: qty,
+          requested: quantity,
           seatsLeft: tier.seatsLeft,
         }
       );
@@ -140,7 +256,7 @@ export function createStore() {
       reference = newReference();
     }
 
-    const totalCents = tier.priceCents * qty;
+    const totalCents = tier.priceCents * quantity;
     if (!Number.isSafeInteger(totalCents)) {
       throw new DomainError(
         ErrorCodes.VALIDATION,
@@ -148,7 +264,7 @@ export function createStore() {
       );
     }
 
-    tier.seatsLeft -= qty;
+    tier.seatsLeft -= quantity;
 
     const booking = {
       id: newId(),
@@ -156,10 +272,10 @@ export function createStore() {
       eventId: event.id,
       tierId: tier.id,
       attendeeName: cleanAttendeeName,
-      quantity: qty,
+      quantity,
       unitPriceCents: tier.priceCents,
       totalCents,
-      status: "CONFIRMED",
+      status: "PENDING",
       bookedAt: new Date().toISOString(),
       cancelledAt: null,
     };
@@ -258,10 +374,34 @@ export function createStore() {
   return {
     createEvent,
     addTier,
+    publishEvent: publishEventInternal,
+    unpublishEvent: unpublishEventInternal,
+    listEventSummaries: listEventSummariesInternal,
     bookTickets,
     cancelBooking,
     findBookingByReference,
     joinWaitlist,
     getTierStatus,
   };
+}
+
+function assertStore(store) {
+  if (!store || typeof store.publishEvent !== "function" || typeof store.listEventSummaries !== "function") {
+    throw new DomainError(ErrorCodes.VALIDATION, "A valid store instance is required.");
+  }
+}
+
+export function publishEvent(store, eventId) {
+  assertStore(store);
+  return store.publishEvent(eventId);
+}
+
+export function unpublishEvent(store, eventId) {
+  assertStore(store);
+  return store.unpublishEvent(eventId);
+}
+
+export function listEventSummaries(store, options = { publishedOnly: true }) {
+  assertStore(store);
+  return store.listEventSummaries(options);
 }
