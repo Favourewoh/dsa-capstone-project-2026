@@ -1,0 +1,10 @@
+{
+  "name": "dsa-capstone-project-2026",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "demo": "node scripts/demo.js",
+    "benchmark": "node scripts/benchmark-lookup.js"
+  }
+}
