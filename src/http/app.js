@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRouter } from "./router.js";
 import { DomainError } from "../domain/errors.js";
+import { registerApiRoutes } from "./routes/apiRoutes.js";
 
 const CONTENT_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -150,6 +151,8 @@ function statusFromDomainCode(code) {
     case "VALIDATION":
     case "BAD_JSON":
       return 400;
+    case "PAYMENT_DECLINED":
+      return 402;
     case "NOT_FOUND":
       return 404;
     case "CONFLICT":
@@ -164,15 +167,24 @@ function statusFromDomainCode(code) {
   }
 }
 
-export function createApp({ publicDir = path.resolve(process.cwd(), "public"), registerRoutes } = {}) {
+export function createApp({
+  publicDir = path.resolve(process.cwd(), "public"),
+  eventService,
+  bookingService,
+  registerRoutes,
+} = {}) {
   const router = createRouter();
 
   router.get("/health", (_req, res) => {
     sendJson(res, 200, { status: "ok" });
   });
 
+  if (eventService && bookingService) {
+    registerApiRoutes(router, { eventService, bookingService, readJsonBody, sendJson, sendError });
+  }
+
   if (typeof registerRoutes === "function") {
-    registerRoutes(router, { readJsonBody, sendJson, sendError });
+    registerRoutes(router, { readJsonBody, sendJson, sendError, eventService, bookingService });
   }
 
   return http.createServer(async (req, res) => {
@@ -205,7 +217,7 @@ export function createApp({ publicDir = path.resolve(process.cwd(), "public"), r
 
       sendError(res, 404, "NOT_FOUND", `Not found: ${pathname}`);
     } catch (err) {
-      // Never return stack traces to clients
+      // Never leak stack traces to clients
       if (err instanceof DomainError) {
         sendError(res, statusFromDomainCode(err.code), err.code, err.message);
         return;

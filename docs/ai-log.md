@@ -39,3 +39,22 @@
 - **Error code definition in `errors.js`:** `src/domain/bookingStateMachine.js` falls back to `"INVALID_TRANSITION"` if `ErrorCodes.INVALID_TRANSITION` is not explicitly defined in `src/domain/errors.js`; confirm `INVALID_TRANSITION` is present in `ErrorCodes` if centralized error codes are enforced.
 - **State casing vs. existing domain code:** Build 3 specifies lowercase booking states (`pending`, `paid`, `cancelled`, `refunded`, `checked_in`), whereas earlier domain code used uppercase statuses (`"CANCELLED"`). Existing `src/domain/inventory.js` behavior was left untouched and will be aligned when wiring the state machine into booking flows.
 - **Traversal status code:** Blocked path-traversal requests outside `public/` return HTTP `403` (`FORBIDDEN_PATH`) in the `{"error":{"code","message"}}` JSON format.
+
+## Build 4: Working REST API (in memory)
+
+### What Was Asked
+- Implement Build 4 of the Event Ticketing capstone in plain ES modules (Node 22.13+, no external packages) following the layered architecture (`Routes -> Services -> Rules -> Repositories`)[cite: 3, 5].
+- Add an async in-memory repository (`src/repositories/memory.js`), services (`src/services/eventService.js`, `src/services/bookingService.js`) reusing `src/domain/` rules, a mock payment gateway (`src/lib/mockPaymentGateway.js`) that never handles card numbers, REST routes with `x-user-id` caller identification, `docs/api-examples.md`, and API tests using `node:test` on a free port[cite: 3].
+- Enforce whole-cent money handling, leave bookings `pending` on declined payments, and allow only the booking owner to pay[cite: 3].
+
+### What Came Back & What Was Checked / Adjusted
+- Added `INVALID_TRANSITION` and `PAYMENT_DECLINED` to `ErrorCodes` in `src/domain/errors.js`[cite: 3, 12].
+- Created `src/repositories/memory.js` with async methods for events, tiers, and bookings, and injected it into `eventService` and `bookingService` rather than importing the repository inside services[cite: 3].
+- Built `src/services/eventService.js` and `src/services/bookingService.js` reusing `searchEvents` and `assertTransition` from `src/domain/`[cite: 3, 11, 13].
+- Built `src/lib/mockPaymentGateway.js` with an async `charge()` method that returns approval or throws `PAYMENT_DECLINED` without accepting card numbers[cite: 3].
+- Added REST route handlers in `src/http/routes/apiRoutes.js`, wired services in `src/server.js`, and mapped `PAYMENT_DECLINED` to HTTP `402` in `src/http/app.js` while keeping uniform `{"error":{"code","message"}}` error responses[cite: 3, 9].
+- Added `docs/api-examples.md` with `curl` examples (create, tier, publish, search, book, pay, decline, and cancel) and `test/build-4.test.js` starting the server on a free port[cite: 3].
+
+### Verification & Open Questions
+- Ran `npm test` and confirmed all 14 tests pass (`pass 14`, `fail 0`) across Build 3, Build 4 REST API, and Build 2 Domain & Search[cite: 18].
+- **Uncertainties to verify:** Whether `PAYMENT_DECLINED` should map to HTTP `402` or another status code (`400`/`409`), whether `CONFLICT` (`409`) is the preferred code when a non-owner attempts to pay or cancel a booking, and whether any full role/organizer ownership checks should wait until Build 7[cite: 3, 4].
