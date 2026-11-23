@@ -1,8 +1,21 @@
 import { getConfig } from "./config.js";
 import { createApp } from "./http/app.js";
+import { createMemoryRepository } from "./repositories/memory.js";
+import { createMockPaymentGateway } from "./lib/mockPaymentGateway.js";
+import { createEventService } from "./services/eventService.js";
+import { createBookingService } from "./services/bookingService.js";
 
 const config = getConfig();
-const server = createApp({ publicDir: config.publicDir });
+const repository = createMemoryRepository();
+const paymentGateway = createMockPaymentGateway();
+const eventService = createEventService(repository);
+const bookingService = createBookingService(repository, paymentGateway);
+
+const server = createApp({
+  publicDir: config.publicDir,
+  eventService,
+  bookingService,
+});
 
 server.listen(config.port, config.host, () => {
   console.log(`Server running at http://${config.host}:${config.port}`);

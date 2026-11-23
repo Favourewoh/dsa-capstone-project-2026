@@ -4,6 +4,8 @@ export const ErrorCodes = Object.freeze({
   SOLD_OUT: "SOLD_OUT",
   CONFLICT: "CONFLICT",
   INVALID_STATE: "INVALID_STATE",
+  INVALID_TRANSITION: "INVALID_TRANSITION",
+  PAYMENT_DECLINED: "PAYMENT_DECLINED",
 });
 
 export class DomainError extends Error {
