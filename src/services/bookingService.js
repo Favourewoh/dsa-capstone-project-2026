@@ -49,14 +49,26 @@ export function createBookingService(repository, paymentGateway) {
         );
       }
 
-      if (tier.seatsLeft < quantity) {
-        throw new DomainError(
-          ErrorCodes.SOLD_OUT,
-          `Not enough seats left on tier "${tier.name}". Requested ${quantity}, available ${tier.seatsLeft}.`
-        );
+      let updatedTier;
+      if (typeof repository.reserveSeats === "function") {
+        updatedTier = await repository.reserveSeats({
+          tierId: cleanTierId,
+          quantity,
+        });
+      } else {
+        if (tier.seatsLeft < quantity) {
+          throw new DomainError(
+            ErrorCodes.SOLD_OUT,
+            `Not enough seats left on tier "${tier.name}". Requested ${quantity}, available ${tier.seatsLeft}.`
+          );
+        }
+        updatedTier = await repository.saveTier({
+          ...tier,
+          seatsLeft: tier.seatsLeft - quantity,
+        });
       }
 
-      const totalCents = tier.priceCents * quantity;
+      const totalCents = updatedTier.priceCents * quantity;
       if (!Number.isSafeInteger(totalCents)) {
         throw new DomainError(
           ErrorCodes.VALIDATION,
@@ -69,11 +81,6 @@ export function createBookingService(repository, paymentGateway) {
         reference = newReference();
       }
 
-      await repository.saveTier({
-        ...tier,
-        seatsLeft: tier.seatsLeft - quantity,
-      });
-
       const booking = {
         id: newId(),
         reference,
@@ -82,7 +89,7 @@ export function createBookingService(repository, paymentGateway) {
         userId: ownerId,
         attendeeName: cleanAttendeeName,
         quantity,
-        unitPriceCents: tier.priceCents,
+        unitPriceCents: updatedTier.priceCents,
         totalCents,
         status: "pending",
         createdAt: new Date().toISOString(),

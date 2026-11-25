@@ -58,3 +58,23 @@
 ### Verification & Open Questions
 - Ran `npm test` and confirmed all 14 tests pass (`pass 14`, `fail 0`) across Build 3, Build 4 REST API, and Build 2 Domain & Search[cite: 18].
 - **Uncertainties to verify:** Whether `PAYMENT_DECLINED` should map to HTTP `402` or another status code (`400`/`409`), whether `CONFLICT` (`409`) is the preferred code when a non-owner attempts to pay or cancel a booking, and whether any full role/organizer ownership checks should wait until Build 7[cite: 3, 4].
+
+## Build 5: SQLite and the overselling fix
+
+### What Was Asked
+- **Prompt 1:** Move storage to SQLite (`node:sqlite`, plain ES modules, Node 22.13+, no outside packages) with `src/db/schema.sql`, `src/db/connection.js`, and `src/repositories/sqlite.js` matching `memory.js` using parameterized `?` queries[cite: 17]. Add an idempotent `scripts/seed.js` (`npm run seed`) and an unfixed `scripts/oversell-demo.js` (`npm run oversell`) firing 50 concurrent bookings at 1 remaining seat[cite: 17].
+- **Prompt 2:** Fix overselling in the database using a single atomic `UPDATE ticket_tiers SET sold = sold + ? WHERE id = ? AND sold + ? <= capacity` statement checking `changes`, without lock variables or double-checking in JavaScript[cite: 17]. Add `test/oversell.test.js` and compare before-and-after demo results[cite: 17].
+
+### What Came Back & What Was Caught / Fixed
+- Added `src/db/schema.sql` (`users`, `events`, `ticket_tiers`, `bookings` with `PRIMARY KEY`, `FOREIGN KEY`, `UNIQUE`, and `CHECK (sold >= 0 AND sold <= capacity)` constraints), `src/db/connection.js`, and `src/repositories/sqlite.js`[cite: 17].
+- Added `scripts/seed.js`, `scripts/oversell-demo.js`, `"seed"` and `"oversell"` scripts in `package.json`, and updated `src/server.js` to persist data in SQLite across restarts[cite: 17].
+- **Bug caught during Prompt 2 verification:** After adding `reserveSeats` to `src/repositories/sqlite.js`, `test/oversell.test.js` initially failed (`50 !== 1`) because `src/services/bookingService.js` was still reading `tier.seatsLeft` in JavaScript and calling `saveTier` instead of delegating to `repository.reserveSeats`[cite: 20, 21, 22]. Updated `createBooking` in `src/services/bookingService.js` to call `repository.reserveSeats` directly[cite: 17].
+- **Before vs. After (`npm run oversell`):**
+  - Before fix: `Bookings succeeded: 50`, `Seats sold: 0` (race condition overwrote `sold`)[cite: 19].
+  - After fix: `Bookings succeeded: 1`, `Seats sold: 1` (49 rejected with `SOLD_OUT`)[cite: 17, 23].
+- **Why locks and double-checks fail:** A JS lock variable only coordinates within a single process and breaks across multiple processes or database connections, while checking seat availability twice still leaves a race window between the read and write[cite: 17].
+
+### Verification & Open Questions
+- Verified `npm run oversell` outputs `Bookings succeeded: 1` and `Seats sold: 1`[cite: 23].
+- Verified `npm test` passes all 15 tests across 5 suites (`pass 15`, `fail 0`), including `test/oversell.test.js`[cite: 23, 24].
+- **Uncertainties:** `sqlite.js` inserts a lightweight placeholder row into `users` when saving an event or booking with a new `x-user-id` so foreign key constraints pass before Build 7 authentication is implemented; also, `reserveSeats` checks tier existence first so missing tiers return `NOT_FOUND` while sold-out tiers return `SOLD_OUT`[cite: 17].
