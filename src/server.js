@@ -1,12 +1,12 @@
 import { getConfig } from "./config.js";
 import { createApp } from "./http/app.js";
-import { createMemoryRepository } from "./repositories/memory.js";
+import { createSqliteRepository } from "./repositories/sqlite.js";
 import { createMockPaymentGateway } from "./lib/mockPaymentGateway.js";
 import { createEventService } from "./services/eventService.js";
 import { createBookingService } from "./services/bookingService.js";
 
 const config = getConfig();
-const repository = createMemoryRepository();
+const repository = createSqliteRepository();
 const paymentGateway = createMockPaymentGateway();
 const eventService = createEventService(repository);
 const bookingService = createBookingService(repository, paymentGateway);
