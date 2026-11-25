@@ -78,3 +78,20 @@
 - Verified `npm run oversell` outputs `Bookings succeeded: 1` and `Seats sold: 1`[cite: 23].
 - Verified `npm test` passes all 15 tests across 5 suites (`pass 15`, `fail 0`), including `test/oversell.test.js`[cite: 23, 24].
 - **Uncertainties:** `sqlite.js` inserts a lightweight placeholder row into `users` when saving an event or booking with a new `x-user-id` so foreign key constraints pass before Build 7 authentication is implemented; also, `reserveSeats` checks tier existence first so missing tiers return `NOT_FOUND` while sold-out tiers return `SOLD_OUT`[cite: 17].
+
+## Build 6: Frontend on mock data
+
+### What Was Asked
+- Build the browser frontend for Build 6 in plain HTML, CSS, and browser ES modules (no framework, no build step), keeping all data access isolated in `public/js/api.js` reading from `public/js/mockData.js` while matching the response shapes in `docs/api-examples.md`[cite: 10, 12].
+- Create `public/index.html` (browse, search, filter by city and max price, sort), `public/event.html` (event details, tiers, quantity picker, seat-hold countdown, mock card checkout), `public/js/ui.js` (`el()` helper using `textContent` and single `formatPriceCents()` helper formatting `250000` as `₦2,500`), `public/js/pages/home.js`, `public/js/pages/event.js`, and `public/css/styles.css`[cite: 10].
+- Enforce quantity limits (`1` to `10` and at most `seatsLeft`), mark sold-out tiers clearly with disabled buttons, show a checkout countdown, let users retry after a declined mock card, label every form control, and use `<button>` for actions and `<a>` for navigation[cite: 10].
+
+### What Came Back & What Was Checked / Adjusted
+- Created `public/index.html` and `public/event.html` with `<label>` elements tied to every input/select/checkbox and semantic links vs. buttons[cite: 10].
+- Created `public/js/ui.js` with `el(tag, props, children)` using `textContent` / text nodes (never `innerHTML`) and `formatPriceCents()` formatting whole cents into Naira (`250000` -> `₦2,500`)[cite: 10].
+- Created `public/js/mockData.js` and `public/js/api.js` exporting `listEvents`, `getEvent`, `createBooking`, and `pay` with mock data and error codes (`NOT_FOUND`, `VALIDATION`, `INVALID_STATE`, `SOLD_OUT`, `INVALID_TRANSITION`, `PAYMENT_DECLINED`)[cite: 10, 12].
+- Created `public/js/pages/home.js`, `public/js/pages/event.js`, and `public/css/styles.css` with live quantity clamping (`Math.min(10, tier.seatsLeft)`), disabled sold-out tier buttons, a per-second checkout countdown, and retryable payment error handling[cite: 10].
+
+### Verification & Open Questions
+- Verified event browsing, filtering, sorting, sold-out tier display, seat-hold countdown, declined mock card retry, and payment confirmation in the browser[cite: 10].
+- **Uncertainties:** `docs/build-6.md` specifies a seat-hold countdown in checkout without fixing a duration, so a 10-minute (`600s`) hold was chosen; also, `event.html` provides a "Simulate declined card" checkbox (plus `0000` last-4 trigger) to test card declines on mock data before wiring `public/js/api.js` to the real backend in a later build[cite: 10, 12].
