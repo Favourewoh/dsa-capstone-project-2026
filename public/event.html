@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Event Details — Event Ticketing</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="/index.html" class="brand">Ticketing</a>
+      <nav aria-label="Primary">
+        <a href="/index.html" class="nav-link">Back to Events</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <div id="page-alert" role="alert" class="alert hidden"></div>
+
+    <section id="event-details" class="event-banner" aria-label="Event overview"></section>
+
+    <section class="event-layout">
+      <div class="tiers-column">
+        <h2>Ticket Tiers</h2>
+        <div id="tiers-list" class="tiers-list"></div>
+
+        <form id="booking-form" class="card booking-form">
+          <h3>Reserve Tickets</h3>
+
+          <div class="field">
+            <label for="tier-select">Ticket tier</label>
+            <select id="tier-select" name="tierId" required></select>
+          </div>
+
+          <div class="field">
+            <label for="quantity-input">Quantity (max 10 or seats left)</label>
+            <input id="quantity-input" name="quantity" type="number" min="1" max="10" value="1" required />
+          </div>
+
+          <div class="field">
+            <label for="attendee-name-input">Attendee full name</label>
+            <input id="attendee-name-input" name="attendeeName" type="text" required placeholder="Ada Lovelace" />
+          </div>
+
+          <div class="summary-row">
+            <span>Estimated total</span>
+            <strong id="estimated-total">₦0</strong>
+          </div>
+
+          <button type="submit" id="book-btn" class="btn btn-primary">Hold Seats &amp; Checkout</button>
+        </form>
+      </div>
+
+      <aside class="checkout-column" aria-label="Checkout">
+        <div id="checkout-card" class="card checkout-card">
+          <h2>Checkout</h2>
+          <p id="checkout-empty" class="muted">Select a tier and reserve tickets to start checkout.</p>
+
+          <div id="checkout-active" class="hidden">
+            <div class="countdown-box" aria-live="polite">
+              <span>Seats held for</span>
+              <strong id="countdown-display">10:00</strong>
+            </div>
+
+            <dl class="booking-summary">
+              <div>
+                <dt>Reference</dt>
+                <dd id="booking-ref"></dd>
+              </div>
+              <div>
+                <dt>Attendee</dt>
+                <dd id="booking-attendee"></dd>
+              </div>
+              <div>
+                <dt>Quantity</dt>
+                <dd id="booking-qty"></dd>
+              </div>
+              <div>
+                <dt>Amount due</dt>
+                <dd id="booking-total"></dd>
+              </div>
+              <div>
+                <dt>Status</dt>
+                <dd id="booking-status"></dd>
+              </div>
+            </dl>
+
+            <form id="payment-form" class="payment-form">
+              <div class="field">
+                <label for="card-last4-input">Mock card last 4 digits</label>
+                <input id="card-last4-input" name="cardLast4" type="text" inputmode="numeric" maxlength="4" value="4242" required />
+              </div>
+
+              <div class="field checkbox-field">
+                <input id="simulate-decline-checkbox" name="simulateDecline" type="checkbox" />
+                <label for="simulate-decline-checkbox">Simulate declined card</label>
+              </div>
+
+              <div id="payment-error" role="alert" class="alert alert-error hidden"></div>
+
+              <button type="submit" id="pay-btn" class="btn btn-primary">Pay Now</button>
+            </form>
+
+            <div id="payment-confirmed" class="confirmation-box hidden" aria-live="polite">
+              <h3>Booking Confirmed</h3>
+              <p id="confirmed-message"></p>
+              <p id="confirmed-tx" class="muted"></p>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <script type="module" src="/js/pages/event.js"></script>
+</body>
+</html>
