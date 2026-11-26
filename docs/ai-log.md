@@ -95,3 +95,19 @@
 ### Verification & Open Questions
 - Verified event browsing, filtering, sorting, sold-out tier display, seat-hold countdown, declined mock card retry, and payment confirmation in the browser[cite: 10].
 - **Uncertainties:** `docs/build-6.md` specifies a seat-hold countdown in checkout without fixing a duration, so a 10-minute (`600s`) hold was chosen; also, `event.html` provides a "Simulate declined card" checkbox (plus `0000` last-4 trigger) to test card declines on mock data before wiring `public/js/api.js` to the real backend in a later build[cite: 10, 12].
+
+
+## Build 7 — Authentication, Authorization, and Session Management
+
+### Summary
+Implemented end-to-end authentication, role-based access control (RBAC), resource ownership enforcement, SQLite user persistence, and frontend session management using zero external dependencies.
+
+### Key Changes
+- **Auth & Cryptography:** Built `scrypt` password hashing (`src/lib/password.js`), custom `HS256` JWT signing/verification (`src/lib/token.js`), and `authService` (`signup`, `login`, `getMe`) with `/api/auth/*` endpoints (`src/routes/auth.js`).
+- **RBAC & Ownership Guards:** Added `requireUser`, `requireRole` (`organizer` / `attendee`), `assertEventOwner` (`403 FORBIDDEN`), and `assertBookingOwner` (`404 NOT_FOUND`) across `eventService`, `bookingService`, and `apiRoutes`.
+- **Persistence & Error Mapping:** Updated `src/db/schema.sql` and `src/repositories/sqlite.js` (plus `memory.js`) to persist `users` with `password_hash` and filter bookings by `userId`. Mapped `UNAUTHENTICATED` (`401`), `FORBIDDEN` (`403`), and `EMAIL_TAKEN` (`409`) in `src/http/app.js`.
+- **Frontend & Testing:** Wired Bearer token session handling (`public/js/session.js`, `public/js/api.js`) across `/login.html`, `/organizer.html`, `/event.html`, and `/tickets.html`. Updated `test/build-4.test.js` and added `test/build-7.test.js` covering auth, RBAC, and ownership edge cases.
+
+### Verification
+- All unit and integration tests pass (`npm test`).
+- Verified full organizer and attendee workflows end to end in the browser against SQLite persistence.
