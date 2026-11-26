@@ -10,8 +10,11 @@
   <header class="site-header">
     <div class="container header-inner">
       <a href="/index.html" class="brand">Ticketing</a>
-      <nav aria-label="Primary">
+      <nav aria-label="Primary" class="nav-links">
         <a href="/index.html" class="nav-link active">Browse Events</a>
+        <a href="/tickets.html" class="nav-link">My Tickets</a>
+        <a href="/organizer.html" class="nav-link">Organizer</a>
+        <a href="/login.html" id="nav-auth-link" class="nav-link">Login</a>
       </nav>
     </div>
   </header>
@@ -57,8 +60,10 @@
       </form>
     </section>
 
+    <div id="events-error" role="alert" class="alert alert-error hidden"></div>
+
     <section aria-live="polite" class="results-meta">
-      <p id="results-count" class="muted"></p>
+      <p id="results-count" class="muted">Loading events...</p>
     </section>
 
     <section id="events-list" class="events-grid" aria-label="Events list"></section>

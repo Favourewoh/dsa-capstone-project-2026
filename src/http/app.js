@@ -4,6 +4,7 @@ import path from "node:path";
 import { createRouter } from "./router.js";
 import { DomainError } from "../domain/errors.js";
 import { registerApiRoutes } from "./routes/apiRoutes.js";
+import { registerAuthRoutes } from "../routes/auth.js";
 
 const CONTENT_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -151,11 +152,17 @@ function statusFromDomainCode(code) {
     case "VALIDATION":
     case "BAD_JSON":
       return 400;
+    case "UNAUTHENTICATED":
+    case "INVALID_CREDENTIALS":
+      return 401;
+    case "FORBIDDEN":
+      return 403;
     case "PAYMENT_DECLINED":
       return 402;
     case "NOT_FOUND":
       return 404;
     case "CONFLICT":
+    case "EMAIL_TAKEN":
     case "SOLD_OUT":
     case "INVALID_STATE":
     case "INVALID_TRANSITION":
@@ -171,6 +178,8 @@ export function createApp({
   publicDir = path.resolve(process.cwd(), "public"),
   eventService,
   bookingService,
+  authService,
+  repository,
   registerRoutes,
 } = {}) {
   const router = createRouter();
@@ -179,12 +188,31 @@ export function createApp({
     sendJson(res, 200, { status: "ok" });
   });
 
+  if (authService && repository) {
+    registerAuthRoutes(router, { authService, repository, readJsonBody, sendJson, sendError });
+  }
+
   if (eventService && bookingService) {
-    registerApiRoutes(router, { eventService, bookingService, readJsonBody, sendJson, sendError });
+    registerApiRoutes(router, {
+      eventService,
+      bookingService,
+      repository,
+      readJsonBody,
+      sendJson,
+      sendError,
+    });
   }
 
   if (typeof registerRoutes === "function") {
-    registerRoutes(router, { readJsonBody, sendJson, sendError, eventService, bookingService });
+    registerRoutes(router, {
+      readJsonBody,
+      sendJson,
+      sendError,
+      eventService,
+      bookingService,
+      authService,
+      repository,
+    });
   }
 
   return http.createServer(async (req, res) => {

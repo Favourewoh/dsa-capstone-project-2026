@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Login &amp; Sign Up — Event Ticketing</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="/index.html" class="brand">Ticketing</a>
+      <nav aria-label="Primary" class="nav-links">
+        <a href="/index.html" class="nav-link">Browse Events</a>
+        <a href="/tickets.html" class="nav-link">My Tickets</a>
+        <a href="/organizer.html" class="nav-link">Organizer</a>
+        <a href="/login.html" class="nav-link active">Login</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="page-head">
+      <h1>Account Access</h1>
+      <p id="session-banner" class="muted">Sign in or create an account to book tickets or manage events.</p>
+    </section>
+
+    <div id="auth-error" role="alert" class="alert alert-error hidden"></div>
+    <div id="auth-status" role="status" class="alert alert-ok hidden"></div>
+
+    <div class="auth-grid">
+      <section class="card" aria-labelledby="login-heading">
+        <h2 id="login-heading">Log In</h2>
+        <form id="login-form" class="stack-form">
+          <div class="field">
+            <label for="login-email">Email</label>
+            <input id="login-email" name="email" type="email" required autocomplete="email" />
+          </div>
+
+          <div class="field">
+            <label for="login-password">Password</label>
+            <input id="login-password" name="password" type="password" required autocomplete="current-password" />
+          </div>
+
+          <button type="submit" id="login-submit-btn" class="btn btn-primary">Log In</button>
+        </form>
+      </section>
+
+      <section class="card" aria-labelledby="signup-heading">
+        <h2 id="signup-heading">Sign Up</h2>
+        <form id="signup-form" class="stack-form">
+          <div class="field">
+            <label for="signup-name">Full name</label>
+            <input id="signup-name" name="name" type="text" required autocomplete="name" />
+          </div>
+
+          <div class="field">
+            <label for="signup-email">Email</label>
+            <input id="signup-email" name="email" type="email" required autocomplete="email" />
+          </div>
+
+          <div class="field">
+            <label for="signup-password">Password (at least 8 characters)</label>
+            <input id="signup-password" name="password" type="password" minlength="8" required autocomplete="new-password" />
+          </div>
+
+          <div class="field">
+            <label for="signup-role">Role</label>
+            <select id="signup-role" name="role">
+              <option value="attendee">Attendee</option>
+              <option value="organizer">Organizer</option>
+              <option value="staff">Staff</option>
+            </select>
+          </div>
+
+          <button type="submit" id="signup-submit-btn" class="btn btn-primary">Create Account</button>
+        </form>
+      </section>
+    </div>
+  </main>
+
+  <script type="module">
+    import { login, signup, getMe, logout } from "/js/api.js";
+    import { getUser, isAuthenticated } from "/js/session.js";
+
+    const sessionBanner = document.querySelector("#session-banner");
+    const errorBox = document.querySelector("#auth-error");
+    const statusBox = document.querySelector("#auth-status");
+    const loginForm = document.querySelector("#login-form");
+    const signupForm = document.querySelector("#signup-form");
+    const loginBtn = document.querySelector("#login-submit-btn");
+    const signupBtn = document.querySelector("#signup-submit-btn");
+
+    function showError(msg) {
+      statusBox.classList.add("hidden");
+      errorBox.textContent = msg;
+      errorBox.classList.remove("hidden");
+    }
+
+    function showStatus(msg) {
+      errorBox.classList.add("hidden");
+      statusBox.textContent = msg;
+      statusBox.classList.remove("hidden");
+    }
+
+    function clearAlerts() {
+      errorBox.classList.add("hidden");
+      statusBox.classList.add("hidden");
+    }
+
+    function refreshBanner() {
+      const user = getUser();
+      if (isAuthenticated() && user) {
+        sessionBanner.textContent = `Signed in as ${user.email} (${user.role}).`;
+      } else {
+        sessionBanner.textContent = "Sign in or create an account to book tickets or manage events.";
+      }
+    }
+
+    refreshBanner();
+
+    if (isAuthenticated()) {
+      showStatus("Checking active session...");
+      getMe()
+        .then(({ user }) => {
+          if (user) {
+            showStatus(`Active session: ${user.email} (${user.role}).`);
+          }
+        })
+        .catch(() => {
+          logout();
+          refreshBanner();
+          statusBox.classList.add("hidden");
+        });
+    }
+
+    loginForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      clearAlerts();
+      loginBtn.disabled = true;
+      loginBtn.textContent = "Logging in...";
+      showStatus("Signing in...");
+
+      try {
+        const result = await login({
+          email: document.querySelector("#login-email").value,
+          password: document.querySelector("#login-password").value,
+        });
+        const role = result?.user?.role;
+        window.location.href = role === "organizer" ? "/organizer.html" : "/index.html";
+      } catch (err) {
+        showError(err.message || "Unable to log in.");
+      } finally {
+        loginBtn.disabled = false;
+        loginBtn.textContent = "Log In";
+      }
+    });
+
+    signupForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      clearAlerts();
+      signupBtn.disabled = true;
+      signupBtn.textContent = "Creating account...";
+      showStatus("Creating account...");
+
+      try {
+        const result = await signup({
+          name: document.querySelector("#signup-name").value,
+          email: document.querySelector("#signup-email").value,
+          password: document.querySelector("#signup-password").value,
+          role: document.querySelector("#signup-role").value,
+        });
+        const role = result?.user?.role;
+        window.location.href = role === "organizer" ? "/organizer.html" : "/index.html";
+      } catch (err) {
+        showError(err.message || "Unable to sign up.");
+      } finally {
+        signupBtn.disabled = false;
+        signupBtn.textContent = "Create Account";
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,4 +1,5 @@
-import { getEvent, createBooking, pay } from "../api.js";
+import { getEvent, createBooking, pay, logout } from "../api.js";
+import { isAuthenticated } from "../session.js";
 import { el, clearChildren, formatPriceCents } from "../ui.js";
 
 const eventDetailsEl = document.querySelector("#event-details");
@@ -9,6 +10,7 @@ const attendeeNameInputEl = document.querySelector("#attendee-name-input");
 const estimatedTotalEl = document.querySelector("#estimated-total");
 const bookingFormEl = document.querySelector("#booking-form");
 const bookBtnEl = document.querySelector("#book-btn");
+const navAuthLink = document.querySelector("#nav-auth-link");
 
 const pageAlertEl = document.querySelector("#page-alert");
 const checkoutEmptyEl = document.querySelector("#checkout-empty");
@@ -28,6 +30,16 @@ const payBtnEl = document.querySelector("#pay-btn");
 const paymentConfirmedEl = document.querySelector("#payment-confirmed");
 const confirmedMessageEl = document.querySelector("#confirmed-message");
 const confirmedTxEl = document.querySelector("#confirmed-tx");
+
+if (isAuthenticated() && navAuthLink) {
+  navAuthLink.textContent = "Log Out";
+  navAuthLink.href = "#logout";
+  navAuthLink.addEventListener("click", (e) => {
+    e.preventDefault();
+    logout();
+    window.location.href = "/login.html";
+  });
+}
 
 let currentEvent = null;
 let activeBooking = null;
@@ -65,7 +77,7 @@ function stopCountdown() {
 
 function startCountdown(expiresAtIso) {
   stopCountdown();
-  const expiresMs = new Date(expiresAtIso).getTime();
+  const expiresMs = expiresAtIso ? new Date(expiresAtIso).getTime() : Date.now() + 10 * 60 * 1000;
 
   const tick = () => {
     const remainingSec = Math.max(0, Math.floor((expiresMs - Date.now()) / 1000));
@@ -132,7 +144,9 @@ function renderEventAndTiers() {
     ])
   );
 
-  for (const tier of currentEvent.tiers) {
+  const tiers = Array.isArray(currentEvent.tiers) ? currentEvent.tiers : [];
+
+  for (const tier of tiers) {
     const isSoldOut = tier.seatsLeft <= 0;
 
     const option = el("option", {
@@ -157,24 +171,28 @@ function renderEventAndTiers() {
       },
     });
 
-    const tierCard = el("div", { className: isSoldOut ? "card tier-card sold-out" : "card tier-card" }, [
-      el("div", { className: "tier-info" }, [
-        el("div", { className: "tier-header" }, [
-          el("h3", { text: tier.name }),
-          el("span", {
-            className: isSoldOut ? "badge badge-soldout" : "badge badge-open",
-            text: isSoldOut ? "Sold out" : `${tier.seatsLeft} seats left`,
-          }),
+    const tierCard = el(
+      "div",
+      { className: isSoldOut ? "card tier-card sold-out" : "card tier-card" },
+      [
+        el("div", { className: "tier-info" }, [
+          el("div", { className: "tier-header" }, [
+            el("h3", { text: tier.name }),
+            el("span", {
+              className: isSoldOut ? "badge badge-soldout" : "badge badge-open",
+              text: isSoldOut ? "Sold out" : `${tier.seatsLeft} seats left`,
+            }),
+          ]),
+          el("p", { className: "price-tag", text: formatPriceCents(tier.priceCents) }),
         ]),
-        el("p", { className: "price-tag", text: formatPriceCents(tier.priceCents) }),
-      ]),
-      selectBtn,
-    ]);
+        selectBtn,
+      ]
+    );
 
     tiersListEl.appendChild(tierCard);
   }
 
-  const firstAvailable = currentEvent.tiers.find((t) => t.seatsLeft > 0);
+  const firstAvailable = tiers.find((t) => t.seatsLeft > 0);
   if (firstAvailable) {
     tierSelectEl.value = firstAvailable.id;
   }
@@ -205,7 +223,8 @@ function renderCheckoutBooking(booking) {
   } else {
     payBtnEl.disabled = false;
     paymentConfirmedEl.classList.add("hidden");
-    startCountdown(booking.expiresAt);
+    const fallbackExpiry = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    startCountdown(booking.expiresAt || fallbackExpiry);
   }
 }
 
@@ -216,18 +235,31 @@ bookingFormEl.addEventListener("submit", async (e) => {
   e.preventDefault();
   hidePaymentError();
 
+  if (!isAuthenticated()) {
+    showPaymentError("Please log in first before reserving tickets.");
+    return;
+  }
+
   const tierId = tierSelectEl.value;
   const quantity = Number(quantityInputEl.value);
   const attendeeName = attendeeNameInputEl.value;
 
+  bookBtnEl.disabled = true;
+  bookBtnEl.textContent = "Holding seats...";
+
   try {
-    const { booking } = await createBooking({ tierId, quantity, attendeeName });
+    const data = await createBooking({ tierId, quantity, attendeeName });
+    const booking = data?.booking || data;
     const refreshed = await getEvent(currentEvent.id);
-    currentEvent = refreshed.event;
+    currentEvent = refreshed?.event || refreshed;
     renderEventAndTiers();
     renderCheckoutBooking(booking);
   } catch (err) {
     showPaymentError(err.message || "Could not create booking.");
+  } finally {
+    bookBtnEl.disabled = false;
+    bookBtnEl.textContent = "Hold Seats & Checkout";
+    syncQuantityLimits();
   }
 });
 
@@ -237,16 +269,19 @@ paymentFormEl.addEventListener("submit", async (e) => {
 
   hidePaymentError();
   payBtnEl.disabled = true;
+  payBtnEl.textContent = "Processing...";
 
   try {
     const result = await pay(activeBooking.reference, {
       decline: simulateDeclineCheckboxEl.checked,
       cardLast4: cardLast4InputEl.value,
     });
-    renderCheckoutBooking(result.booking);
+    renderCheckoutBooking(result.booking || result);
   } catch (err) {
     payBtnEl.disabled = false;
     showPaymentError(err.message || "Payment was declined. Please try again.");
+  } finally {
+    payBtnEl.textContent = "Pay Now";
   }
 });
 
@@ -254,14 +289,16 @@ const params = new URLSearchParams(window.location.search);
 const eventId = params.get("id");
 
 if (!eventId) {
+  clearChildren(eventDetailsEl);
   showPageError("Missing event ID in URL.");
 } else {
   try {
-    const { event } = await getEvent(eventId);
-    currentEvent = event;
-    document.title = `${event.title} — Event Ticketing`;
+    const data = await getEvent(eventId);
+    currentEvent = data?.event || data;
+    document.title = `${currentEvent.title} — Event Ticketing`;
     renderEventAndTiers();
   } catch (err) {
+    clearChildren(eventDetailsEl);
     showPageError(err.message || "Unable to load event.");
   }
 }

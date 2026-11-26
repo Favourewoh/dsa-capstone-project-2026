@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Organizer Dashboard — Event Ticketing</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="/index.html" class="brand">Ticketing</a>
+      <nav aria-label="Primary" class="nav-links">
+        <a href="/index.html" class="nav-link">Browse Events</a>
+        <a href="/tickets.html" class="nav-link">My Tickets</a>
+        <a href="/organizer.html" class="nav-link active">Organizer</a>
+        <a href="/login.html" class="nav-link">Login</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="page-head">
+      <h1>Organizer Dashboard</h1>
+      <p id="organizer-status" class="muted">Create events, add ticket tiers, and publish or unpublish.</p>
+    </section>
+
+    <div id="organizer-error" role="alert" class="alert alert-error hidden"></div>
+    <div id="organizer-ok" role="status" class="alert alert-ok hidden"></div>
+
+    <div class="auth-grid">
+      <section class="card" aria-labelledby="create-event-heading">
+        <h2 id="create-event-heading">Create Event</h2>
+        <form id="create-event-form" class="stack-form">
+          <div class="field">
+            <label for="event-title">Title</label>
+            <input id="event-title" name="title" type="text" required />
+          </div>
+
+          <div class="field">
+            <label for="event-city">City</label>
+            <input id="event-city" name="city" type="text" required />
+          </div>
+
+          <div class="field">
+            <label for="event-venue">Venue</label>
+            <input id="event-venue" name="venue" type="text" required />
+          </div>
+
+          <div class="field">
+            <label for="event-date">Date &amp; time</label>
+            <input id="event-date" name="startsAt" type="datetime-local" required />
+          </div>
+
+          <button type="submit" id="create-event-btn" class="btn btn-primary">Create Event</button>
+        </form>
+      </section>
+
+      <section class="card" aria-labelledby="tier-controls-heading">
+        <h2 id="tier-controls-heading">Add Ticket Tier &amp; Publish</h2>
+        <form id="tier-form" class="stack-form">
+          <div class="field">
+            <label for="target-event-id">Event ID</label>
+            <input id="target-event-id" name="eventId" type="text" required />
+          </div>
+
+          <div class="field">
+            <label for="tier-name">Tier name</label>
+            <input id="tier-name" name="name" type="text" required placeholder="Regular Pass" />
+          </div>
+
+          <div class="field">
+            <label for="tier-price-naira">Price (₦)</label>
+            <input id="tier-price-naira" name="priceNaira" type="number" min="0" step="1" required />
+          </div>
+
+          <div class="field">
+            <label for="tier-capacity">Capacity</label>
+            <input id="tier-capacity" name="capacity" type="number" min="1" step="1" required />
+          </div>
+
+          <div class="row-actions">
+            <button type="submit" id="add-tier-btn" class="btn btn-primary">Add Tier</button>
+            <button type="button" id="publish-event-btn" class="btn btn-secondary">Publish</button>
+            <button type="button" id="unpublish-event-btn" class="btn btn-secondary">Unpublish</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  </main>
+
+  <script type="module">
+    import { createEvent, addTier, publishEvent, unpublishEvent } from "/js/api.js";
+
+    const statusEl = document.querySelector("#organizer-status");
+    const errorEl = document.querySelector("#organizer-error");
+    const okEl = document.querySelector("#organizer-ok");
+    const createEventForm = document.querySelector("#create-event-form");
+    const createEventBtn = document.querySelector("#create-event-btn");
+    const tierForm = document.querySelector("#tier-form");
+    const addTierBtn = document.querySelector("#add-tier-btn");
+    const publishBtn = document.querySelector("#publish-event-btn");
+    const unpublishBtn = document.querySelector("#unpublish-event-btn");
+    const targetEventIdInput = document.querySelector("#target-event-id");
+
+    function showError(msg) {
+      okEl.classList.add("hidden");
+      errorEl.textContent = msg;
+      errorEl.classList.remove("hidden");
+      statusEl.textContent = "Action failed.";
+    }
+
+    function showOk(msg) {
+      errorEl.classList.add("hidden");
+      okEl.textContent = msg;
+      okEl.classList.remove("hidden");
+      statusEl.textContent = msg;
+    }
+
+    function clearMessages() {
+      errorEl.classList.add("hidden");
+      okEl.classList.add("hidden");
+    }
+
+    createEventForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      clearMessages();
+      createEventBtn.disabled = true;
+      createEventBtn.textContent = "Creating...";
+      statusEl.textContent = "Creating event...";
+
+      try {
+        const rawDate = document.querySelector("#event-date").value;
+        const isoDate = new Date(rawDate).toISOString();
+        const data = await createEvent({
+          title: document.querySelector("#event-title").value,
+          city: document.querySelector("#event-city").value,
+          venue: document.querySelector("#event-venue").value,
+          startsAt: isoDate,
+        });
+        const created = data?.event || data;
+        if (created?.id) {
+          targetEventIdInput.value = created.id;
+        }
+        showOk(`Created event "${created?.title || "Event"}" (${created?.id || ""}).`);
+      } catch (err) {
+        showError(err.message || "Could not create event.");
+      } finally {
+        createEventBtn.disabled = false;
+        createEventBtn.textContent = "Create Event";
+      }
+    });
+
+    tierForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      clearMessages();
+      const eventId = targetEventIdInput.value.trim();
+      const priceNaira = Number(document.querySelector("#tier-price-naira").value);
+      const capacity = Number(document.querySelector("#tier-capacity").value);
+
+      addTierBtn.disabled = true;
+      addTierBtn.textContent = "Adding...";
+      statusEl.textContent = "Adding ticket tier...";
+
+      try {
+        const data = await addTier(eventId, {
+          name: document.querySelector("#tier-name").value,
+          priceCents: Math.round(priceNaira * 100),
+          capacity,
+        });
+        const tier = data?.tier || data;
+        showOk(`Added tier "${tier?.name || "Tier"}" (${tier?.capacity ?? capacity} seats).`);
+      } catch (err) {
+        showError(err.message || "Could not add ticket tier.");
+      } finally {
+        addTierBtn.disabled = false;
+        addTierBtn.textContent = "Add Tier";
+      }
+    });
+
+    publishBtn.addEventListener("click", async () => {
+      clearMessages();
+      const eventId = targetEventIdInput.value.trim();
+      if (!eventId) {
+        showError("Enter an Event ID first.");
+        return;
+      }
+      publishBtn.disabled = true;
+      statusEl.textContent = "Publishing event...";
+      try {
+        await publishEvent(eventId);
+        showOk(`Event ${eventId} is now published.`);
+      } catch (err) {
+        showError(err.message || "Could not publish event.");
+      } finally {
+        publishBtn.disabled = false;
+      }
+    });
+
+    unpublishBtn.addEventListener("click", async () => {
+      clearMessages();
+      const eventId = targetEventIdInput.value.trim();
+      if (!eventId) {
+        showError("Enter an Event ID first.");
+        return;
+      }
+      unpublishBtn.disabled = true;
+      statusEl.textContent = "Unpublishing event...";
+      try {
+        await unpublishEvent(eventId);
+        showOk(`Event ${eventId} is now unpublished.`);
+      } catch (err) {
+        showError(err.message || "Could not unpublish event.");
+      } finally {
+        unpublishBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

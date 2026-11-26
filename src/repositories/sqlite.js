@@ -5,6 +5,22 @@ function normalizeRef(reference) {
   return String(reference).trim().toUpperCase();
 }
 
+function normalizeEmail(email) {
+  return String(email).trim().toLowerCase();
+}
+
+function mapUserRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    role: row.role,
+    passwordHash: row.password_hash ?? "",
+    createdAt: row.created_at,
+  };
+}
+
 function mapEventRow(row) {
   if (!row) return null;
   return {
@@ -53,15 +69,40 @@ function mapBookingRow(row) {
   };
 }
 
+function ensurePasswordHashColumn(db) {
+  const columns = db.prepare("PRAGMA table_info(users)").all();
+  const hasPasswordHash = columns.some((col) => col.name === "password_hash");
+  if (!hasPasswordHash) {
+    db.exec("ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT '';");
+  }
+}
+
 export function createSqliteRepository(dbOrPath) {
   const db =
     dbOrPath && typeof dbOrPath.prepare === "function"
       ? dbOrPath
       : openDatabase(dbOrPath);
 
+  ensurePasswordHashColumn(db);
+
+  const insertUserStmt = db.prepare(
+    `INSERT INTO users (id, name, email, role, password_hash, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  );
+
+  const getUserByIdStmt = db.prepare(
+    `SELECT id, name, email, role, password_hash, created_at
+     FROM users WHERE id = ?`
+  );
+
+  const getUserByEmailStmt = db.prepare(
+    `SELECT id, name, email, role, password_hash, created_at
+     FROM users WHERE LOWER(email) = ?`
+  );
+
   const ensureUserStmt = db.prepare(
-    `INSERT OR IGNORE INTO users (id, name, email, role, created_at)
-     VALUES (?, ?, ?, ?, ?)`
+    `INSERT OR IGNORE INTO users (id, name, email, role, password_hash, created_at)
+     VALUES (?, ?, ?, ?, '', ?)`
   );
 
   const saveEventStmt = db.prepare(
@@ -142,6 +183,13 @@ export function createSqliteRepository(dbOrPath) {
      FROM bookings WHERE UPPER(reference) = ?`
   );
 
+  const listBookingsByUserIdStmt = db.prepare(
+    `SELECT id, reference, event_id, tier_id, user_id, attendee_name,
+            quantity, unit_price_cents, total_cents, status,
+            created_at, paid_at, cancelled_at, payment_transaction_id
+     FROM bookings WHERE user_id = ? ORDER BY created_at DESC, id DESC`
+  );
+
   const hasBookingRefStmt = db.prepare(
     `SELECT 1 AS found FROM bookings WHERE UPPER(reference) = ? LIMIT 1`
   );
@@ -155,6 +203,34 @@ export function createSqliteRepository(dbOrPath) {
   }
 
   return {
+    async createUser(user) {
+      const cleanEmail = normalizeEmail(user.email);
+      const existing = getUserByEmailStmt.get(cleanEmail);
+      if (existing) {
+        throw new DomainError(ErrorCodes.EMAIL_TAKEN, "Email is already registered.");
+      }
+      const createdAt = user.createdAt ?? new Date().toISOString();
+      insertUserStmt.run(
+        user.id,
+        user.name,
+        cleanEmail,
+        user.role ?? "attendee",
+        user.passwordHash ?? "",
+        createdAt
+      );
+      return mapUserRow(getUserByIdStmt.get(user.id));
+    },
+
+    async getUserById(userId) {
+      if (!userId) return null;
+      return mapUserRow(getUserByIdStmt.get(String(userId)));
+    },
+
+    async getUserByEmail(email) {
+      if (!email) return null;
+      return mapUserRow(getUserByEmailStmt.get(normalizeEmail(email)));
+    },
+
     async saveEvent(event) {
       const now = new Date().toISOString();
       if (event.organizerId) {
@@ -263,6 +339,11 @@ export function createSqliteRepository(dbOrPath) {
         return null;
       }
       return mapBookingRow(getBookingByRefStmt.get(normalizeRef(reference)));
+    },
+
+    async listBookingsByUserId(userId) {
+      if (!userId) return [];
+      return listBookingsByUserIdStmt.all(String(userId)).map(mapBookingRow);
     },
 
     async hasBookingReference(reference) {

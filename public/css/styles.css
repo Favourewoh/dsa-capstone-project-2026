@@ -11,6 +11,7 @@
   --danger-border: #fecaca;
   --ok-bg: #ecfdf5;
   --ok-text: #065f46;
+  --ok-border: #a7f3d0;
   --radius: 10px;
 }
 
@@ -41,6 +42,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
   padding-top: 1rem;
   padding-bottom: 1rem;
 }
@@ -50,6 +53,13 @@ body {
   font-size: 1.15rem;
   color: var(--text);
   text-decoration: none;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .nav-link {
@@ -88,6 +98,27 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 0.9rem;
   align-items: end;
+}
+
+.auth-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.stack-form,
+.stack-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.row-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 .field {
@@ -155,11 +186,23 @@ body {
   gap: 1rem;
 }
 
-.event-card {
+.event-card,
+.booking-card {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   gap: 0.75rem;
+}
+
+.booking-card {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.booking-ref {
+  margin: 0 0 0.25rem;
+  font-size: 1.05rem;
 }
 
 .card-top,
@@ -296,6 +339,12 @@ body {
   background: var(--danger-bg);
   color: var(--danger-text);
   border: 1px solid var(--danger-border);
+}
+
+.alert-ok {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+  border: 1px solid var(--ok-border);
 }
 
 .confirmation-box {

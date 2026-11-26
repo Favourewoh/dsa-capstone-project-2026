@@ -3,23 +3,71 @@ import assert from "node:assert/strict";
 import { createApp } from "../src/http/app.js";
 import { createMemoryRepository } from "../src/repositories/memory.js";
 import { createMockPaymentGateway } from "../src/lib/mockPaymentGateway.js";
+import { createAuthService } from "../src/services/authService.js";
 import { createEventService } from "../src/services/eventService.js";
 import { createBookingService } from "../src/services/bookingService.js";
 
 describe("Build 4 REST API", () => {
   let server;
   let baseUrl;
+  let repository;
+  let organizerToken;
+  let aliceToken;
+  let bobToken;
+  let carolToken;
+
+  async function signupUser({ email, password, name, role }) {
+    const res = await fetch(`${baseUrl}/api/auth/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, name, role }),
+    });
+    assert.equal(res.status, 201);
+    const data = await res.json();
+    return data.token;
+  }
 
   before(async () => {
-    const repository = createMemoryRepository();
+    repository = createMemoryRepository();
     const paymentGateway = createMockPaymentGateway();
+    const authService = createAuthService(repository);
     const eventService = createEventService(repository);
     const bookingService = createBookingService(repository, paymentGateway);
 
-    server = createApp({ eventService, bookingService });
+    server = createApp({
+      eventService,
+      bookingService,
+      authService,
+      repository,
+    });
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     const { port } = server.address();
     baseUrl = `http://127.0.0.1:${port}`;
+
+    organizerToken = await signupUser({
+      email: "org1@example.com",
+      password: "Password123!",
+      name: "Organizer One",
+      role: "organizer",
+    });
+    aliceToken = await signupUser({
+      email: "alice@example.com",
+      password: "Password123!",
+      name: "Alice",
+      role: "attendee",
+    });
+    bobToken = await signupUser({
+      email: "bob@example.com",
+      password: "Password123!",
+      name: "Bob",
+      role: "attendee",
+    });
+    carolToken = await signupUser({
+      email: "carol@example.com",
+      password: "Password123!",
+      name: "Carol",
+      role: "attendee",
+    });
   });
 
   after(async () => {
@@ -31,7 +79,7 @@ describe("Build 4 REST API", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-user-id": "org-1",
+        Authorization: `Bearer ${organizerToken}`,
       },
       body: JSON.stringify({
         title: "Backend Craft",
@@ -53,7 +101,7 @@ describe("Build 4 REST API", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-user-id": "org-1",
+        Authorization: `Bearer ${organizerToken}`,
       },
       body: JSON.stringify({
         name: "Standard",
@@ -67,7 +115,7 @@ describe("Build 4 REST API", () => {
 
     const pubRes = await fetch(`${baseUrl}/api/events/${event.id}/publish`, {
       method: "POST",
-      headers: { "x-user-id": "org-1" },
+      headers: { Authorization: `Bearer ${organizerToken}` },
     });
     assert.equal(pubRes.status, 200);
     const published = await pubRes.json();
@@ -82,7 +130,7 @@ describe("Build 4 REST API", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-user-id": "user-alice",
+        Authorization: `Bearer ${aliceToken}`,
       },
       body: JSON.stringify({
         tierId: tier.id,
@@ -100,11 +148,11 @@ describe("Build 4 REST API", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-user-id": "user-bob",
+        Authorization: `Bearer ${bobToken}`,
       },
       body: JSON.stringify({}),
     });
-    assert.equal(wrongUserPayRes.status, 409);
+    assert.equal(wrongUserPayRes.status, 404);
     const wrongUserErr = await wrongUserPayRes.json();
     assert.equal(typeof wrongUserErr.error?.code, "string");
     assert.equal(typeof wrongUserErr.error?.message, "string");
@@ -114,7 +162,7 @@ describe("Build 4 REST API", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-user-id": "user-alice",
+        Authorization: `Bearer ${aliceToken}`,
       },
       body: JSON.stringify({ decline: true }),
     });
@@ -127,7 +175,7 @@ describe("Build 4 REST API", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-user-id": "user-alice",
+        Authorization: `Bearer ${aliceToken}`,
       },
       body: JSON.stringify({}),
     });
@@ -140,7 +188,7 @@ describe("Build 4 REST API", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-user-id": "user-alice",
+        Authorization: `Bearer ${aliceToken}`,
       },
       body: JSON.stringify({}),
     });
@@ -151,7 +199,7 @@ describe("Build 4 REST API", () => {
     // Paid booking cannot be cancelled in Build 4 (unpaid bookings only)
     const cancelPaidRes = await fetch(`${baseUrl}/api/bookings/${booking.reference}/cancel`, {
       method: "POST",
-      headers: { "x-user-id": "user-alice" },
+      headers: { Authorization: `Bearer ${aliceToken}` },
     });
     assert.equal(cancelPaidRes.status, 409);
     const cancelPaidErr = await cancelPaidRes.json();
@@ -161,7 +209,10 @@ describe("Build 4 REST API", () => {
   it("cancels a pending booking and restores seats", async () => {
     const evtRes = await fetch(`${baseUrl}/api/events`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-user-id": "org-1" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${organizerToken}`,
+      },
       body: JSON.stringify({
         title: "Cancelable Event",
         city: "Enugu",
@@ -173,26 +224,32 @@ describe("Build 4 REST API", () => {
 
     const tierRes = await fetch(`${baseUrl}/api/events/${evt.id}/tiers`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-user-id": "org-1" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${organizerToken}`,
+      },
       body: JSON.stringify({ name: "VIP", priceCents: 5000, capacity: 5 }),
     });
     const tier = await tierRes.json();
 
     await fetch(`${baseUrl}/api/events/${evt.id}/publish`, {
       method: "POST",
-      headers: { "x-user-id": "org-1" },
+      headers: { Authorization: `Bearer ${organizerToken}` },
     });
 
     const bookRes = await fetch(`${baseUrl}/api/bookings`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-user-id": "user-carol" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${carolToken}`,
+      },
       body: JSON.stringify({ tierId: tier.id, attendeeName: "Carol", quantity: 3 }),
     });
     const booking = await bookRes.json();
 
     const cancelRes = await fetch(`${baseUrl}/api/bookings/${booking.reference}/cancel`, {
       method: "POST",
-      headers: { "x-user-id": "user-carol" },
+      headers: { Authorization: `Bearer ${carolToken}` },
     });
     assert.equal(cancelRes.status, 200);
     const cancelled = await cancelRes.json();
