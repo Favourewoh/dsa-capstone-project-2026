@@ -10,8 +10,11 @@
   <header class="site-header">
     <div class="container header-inner">
       <a href="/index.html" class="brand">Ticketing</a>
-      <nav aria-label="Primary">
-        <a href="/index.html" class="nav-link">Back to Events</a>
+      <nav aria-label="Primary" class="nav-links">
+        <a href="/index.html" class="nav-link">Browse Events</a>
+        <a href="/tickets.html" class="nav-link">My Tickets</a>
+        <a href="/organizer.html" class="nav-link">Organizer</a>
+        <a href="/login.html" id="nav-auth-link" class="nav-link">Login</a>
       </nav>
     </div>
   </header>
@@ -19,7 +22,9 @@
   <main class="container">
     <div id="page-alert" role="alert" class="alert hidden"></div>
 
-    <section id="event-details" class="event-banner" aria-label="Event overview"></section>
+    <section id="event-details" class="event-banner" aria-label="Event overview">
+      <p class="muted">Loading event details...</p>
+    </section>
 
     <section class="event-layout">
       <div class="tiers-column">

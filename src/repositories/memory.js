@@ -1,6 +1,8 @@
 import { WaitlistQueue } from "../domain/waitlistQueue.js";
 
 export function createMemoryRepository() {
+  const usersById = new Map();
+  const userIdByEmail = new Map();
   const events = new Map();
   const tiers = new Map();
   const bookingsByReference = new Map();
@@ -11,7 +13,34 @@ export function createMemoryRepository() {
     return String(reference).trim().toUpperCase();
   }
 
+  function normalizeEmail(email) {
+    return String(email).trim().toLowerCase();
+  }
+
   return {
+    async createUser(user) {
+      const record = { ...user };
+      usersById.set(record.id, record);
+      if (record.email) {
+        userIdByEmail.set(normalizeEmail(record.email), record.id);
+      }
+      return { ...record };
+    },
+
+    async getUserById(userId) {
+      if (!userId) return null;
+      const user = usersById.get(String(userId));
+      return user ? { ...user } : null;
+    },
+
+    async getUserByEmail(email) {
+      if (!email) return null;
+      const id = userIdByEmail.get(normalizeEmail(email));
+      if (!id) return null;
+      const user = usersById.get(id);
+      return user ? { ...user } : null;
+    },
+
     async saveEvent(event) {
       events.set(event.id, { ...event });
       if (!tierIdsByEventId.has(event.id)) {

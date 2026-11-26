@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>My Tickets — Event Ticketing</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="/index.html" class="brand">Ticketing</a>
+      <nav aria-label="Primary" class="nav-links">
+        <a href="/index.html" class="nav-link">Browse Events</a>
+        <a href="/tickets.html" class="nav-link active">My Tickets</a>
+        <a href="/organizer.html" class="nav-link">Organizer</a>
+        <a href="/login.html" id="nav-auth-link" class="nav-link">Login</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="page-head">
+      <h1>My Tickets</h1>
+      <p id="tickets-status" class="muted">Loading your bookings...</p>
+    </section>
+
+    <div id="tickets-error" role="alert" class="alert alert-error hidden"></div>
+    <section id="bookings-container" class="stack-list" aria-label="Your bookings"></section>
+  </main>
+
+  <script type="module">
+    import { listMyBookings, pay, cancelBooking, logout } from "/js/api.js";
+    import { isAuthenticated } from "/js/session.js";
+    import { el, clearChildren, formatPriceCents } from "/js/ui.js";
+
+    const statusEl = document.querySelector("#tickets-status");
+    const errorEl = document.querySelector("#tickets-error");
+    const containerEl = document.querySelector("#bookings-container");
+    const navAuthLink = document.querySelector("#nav-auth-link");
+
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.classList.remove("hidden");
+    }
+
+    function hideError() {
+      errorEl.textContent = "";
+      errorEl.classList.add("hidden");
+    }
+
+    if (isAuthenticated() && navAuthLink) {
+      navAuthLink.textContent = "Log Out";
+      navAuthLink.href = "#logout";
+      navAuthLink.addEventListener("click", (e) => {
+        e.preventDefault();
+        logout();
+        window.location.href = "/login.html";
+      });
+    }
+
+    async function loadBookings() {
+      hideError();
+      clearChildren(containerEl);
+
+      if (!isAuthenticated()) {
+        statusEl.textContent = "You need to log in to view your bookings.";
+        containerEl.appendChild(
+          el("a", { href: "/login.html", className: "btn btn-primary", text: "Go to Login" })
+        );
+        return;
+      }
+
+      statusEl.textContent = "Loading your bookings...";
+
+      try {
+        const data = await listMyBookings();
+        const bookings = Array.isArray(data?.bookings) ? data.bookings : [];
+        statusEl.textContent = `${bookings.length} ${bookings.length === 1 ? "booking" : "bookings"}`;
+
+        if (bookings.length === 0) {
+          containerEl.appendChild(
+            el("p", { className: "muted", text: "You have no bookings yet." })
+          );
+          return;
+        }
+
+        for (const booking of bookings) {
+          const actionButtons = [];
+
+          if (booking.status === "pending") {
+            actionButtons.push(
+              el("button", {
+                type: "button",
+                className: "btn btn-primary",
+                text: "Pay Now",
+                onClick: async (e) => {
+                  const btn = e.currentTarget;
+                  hideError();
+                  btn.disabled = true;
+                  btn.textContent = "Paying...";
+                  try {
+                    await pay(booking.reference, {});
+                    await loadBookings();
+                  } catch (err) {
+                    btn.disabled = false;
+                    btn.textContent = "Pay Now";
+                    showError(err.message || "Payment failed.");
+                  }
+                },
+              })
+            );
+
+            actionButtons.push(
+              el("button", {
+                type: "button",
+                className: "btn btn-secondary",
+                text: "Cancel Booking",
+                onClick: async (e) => {
+                  const btn = e.currentTarget;
+                  hideError();
+                  btn.disabled = true;
+                  btn.textContent = "Cancelling...";
+                  try {
+                    await cancelBooking(booking.reference);
+                    await loadBookings();
+                  } catch (err) {
+                    btn.disabled = false;
+                    btn.textContent = "Cancel Booking";
+                    showError(err.message || "Could not cancel booking.");
+                  }
+                },
+              })
+            );
+          }
+
+          containerEl.appendChild(
+            el("article", { className: "card booking-card" }, [
+              el("div", {}, [
+                el("h2", { className: "booking-ref", text: `${booking.reference} — ${booking.attendeeName}` }),
+                el("p", {
+                  className: "muted",
+                  text: `Tickets: ${booking.quantity} · Total: ${formatPriceCents(booking.totalCents)} · Status: ${booking.status}`,
+                }),
+              ]),
+              el("div", { className: "row-actions" }, actionButtons),
+            ])
+          );
+        }
+      } catch (err) {
+        statusEl.textContent = "Unable to load bookings.";
+        showError(err.message || "Failed to fetch your bookings.");
+      }
+    }
+
+    loadBookings();
+  </script>
+</body>
+</html>

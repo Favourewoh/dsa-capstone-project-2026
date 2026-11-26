@@ -1,6 +1,7 @@
 import { DomainError, ErrorCodes } from "../domain/errors.js";
 import { newId, newReference } from "../domain/ids.js";
 import { assertTransition } from "../domain/bookingStateMachine.js";
+import { assertBookingOwner } from "../http/guards.js";
 
 const MIN_TICKETS = 1;
 const MAX_TICKETS = 10;
@@ -18,8 +19,16 @@ export function createBookingService(repository, paymentGateway) {
   }
 
   return {
+    async listBookingsForUser(userId) {
+      const ownerId = requireNonEmptyString(userId, "userId");
+      if (typeof repository.listBookingsByUserId === "function") {
+        return repository.listBookingsByUserId(ownerId);
+      }
+      return [];
+    },
+
     async createBooking({ tierId, attendeeName, quantity, userId } = {}) {
-      const ownerId = requireNonEmptyString(userId, "x-user-id");
+      const ownerId = requireNonEmptyString(userId, "userId");
       const cleanTierId = requireNonEmptyString(tierId, "tierId");
       const cleanAttendeeName = requireNonEmptyString(attendeeName, "attendeeName");
 
@@ -101,7 +110,7 @@ export function createBookingService(repository, paymentGateway) {
     },
 
     async payBooking(reference, { userId, decline = false } = {}) {
-      const callerId = requireNonEmptyString(userId, "x-user-id");
+      const callerId = requireNonEmptyString(userId, "userId");
       const cleanRef = requireNonEmptyString(reference, "reference").toUpperCase();
 
       const booking = await repository.getBookingByReference(cleanRef);
@@ -109,12 +118,7 @@ export function createBookingService(repository, paymentGateway) {
         throw new DomainError(ErrorCodes.NOT_FOUND, `Booking not found: ${cleanRef}`);
       }
 
-      if (booking.userId !== callerId) {
-        throw new DomainError(
-          ErrorCodes.CONFLICT,
-          "Only the user who created this booking can pay for it."
-        );
-      }
+      assertBookingOwner(booking, { id: callerId });
 
       // Enforces booking state machine rules (throws INVALID_TRANSITION if already paid/cancelled/etc.)
       assertTransition(booking.status, "paid");
@@ -147,7 +151,7 @@ export function createBookingService(repository, paymentGateway) {
     },
 
     async cancelBooking(reference, { userId } = {}) {
-      const callerId = requireNonEmptyString(userId, "x-user-id");
+      const callerId = requireNonEmptyString(userId, "userId");
       const cleanRef = requireNonEmptyString(reference, "reference").toUpperCase();
 
       const booking = await repository.getBookingByReference(cleanRef);
@@ -155,12 +159,7 @@ export function createBookingService(repository, paymentGateway) {
         throw new DomainError(ErrorCodes.NOT_FOUND, `Booking not found: ${cleanRef}`);
       }
 
-      if (booking.userId !== callerId) {
-        throw new DomainError(
-          ErrorCodes.CONFLICT,
-          "Only the user who created this booking can cancel it."
-        );
-      }
+      assertBookingOwner(booking, { id: callerId });
 
       // Build 4 rule: unpaid bookings only for now
       if (booking.status !== "pending") {

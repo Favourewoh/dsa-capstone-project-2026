@@ -1,6 +1,7 @@
 import { DomainError, ErrorCodes } from "../domain/errors.js";
 import { newId } from "../domain/ids.js";
 import { searchEvents } from "../domain/eventSearch.js";
+import { assertEventOwner } from "../http/guards.js";
 
 function requireNonEmptyString(value, fieldName) {
   if (typeof value !== "string" || value.trim() === "") {
@@ -144,11 +145,14 @@ export function createEventService(repository) {
       };
     },
 
-    async addTier(eventId, { name, priceCents, capacity } = {}) {
+    async addTier(eventId, { name, priceCents, capacity } = {}, { actor = null } = {}) {
       const cleanEventId = requireNonEmptyString(eventId, "eventId");
       const event = await repository.getEventById(cleanEventId);
       if (!event) {
         throw new DomainError(ErrorCodes.NOT_FOUND, `Event not found: ${cleanEventId}`);
+      }
+      if (actor) {
+        assertEventOwner(event, actor);
       }
 
       const cleanName = requireNonEmptyString(name, "name");
@@ -167,11 +171,14 @@ export function createEventService(repository) {
       return repository.saveTier(tier);
     },
 
-    async publishEvent(eventId) {
+    async publishEvent(eventId, { actor = null } = {}) {
       const cleanEventId = requireNonEmptyString(eventId, "eventId");
       const event = await repository.getEventById(cleanEventId);
       if (!event) {
         throw new DomainError(ErrorCodes.NOT_FOUND, `Event not found: ${cleanEventId}`);
+      }
+      if (actor) {
+        assertEventOwner(event, actor);
       }
 
       const tiers = await repository.listTiersByEventId(event.id);
@@ -185,6 +192,25 @@ export function createEventService(repository) {
       const updated = await repository.saveEvent({
         ...event,
         published: true,
+      });
+
+      return buildSummary(updated, tiers);
+    },
+
+    async unpublishEvent(eventId, { actor = null } = {}) {
+      const cleanEventId = requireNonEmptyString(eventId, "eventId");
+      const event = await repository.getEventById(cleanEventId);
+      if (!event) {
+        throw new DomainError(ErrorCodes.NOT_FOUND, `Event not found: ${cleanEventId}`);
+      }
+      if (actor) {
+        assertEventOwner(event, actor);
+      }
+
+      const tiers = await repository.listTiersByEventId(event.id);
+      const updated = await repository.saveEvent({
+        ...event,
+        published: false,
       });
 
       return buildSummary(updated, tiers);

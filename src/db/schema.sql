@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT NOT NULL CHECK (length(trim(name)) > 0),
   email TEXT NOT NULL UNIQUE CHECK (length(trim(email)) > 0),
   role TEXT NOT NULL DEFAULT 'attendee' CHECK (role IN ('organizer', 'attendee', 'staff')),
+  password_hash TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL
 );
 
